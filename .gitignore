@@ -1,0 +1,44 @@
+# Build output
+build/
+*.o
+*.obj
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.su
+*.d
+
+# Vivado / Vitis (Zynq PL + PS)
+.Xil/
+*.jou
+*.log
+*.wdb
+*.pb
+*.str
+*.xpr~
+.cache/
+vivado_*.backup*
+.ip_user_files/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment files — NEVER commit real secrets, even to a public repo
+.env
+.env.local
+
+# IDE
+.idea/
+cmake-build-*/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
