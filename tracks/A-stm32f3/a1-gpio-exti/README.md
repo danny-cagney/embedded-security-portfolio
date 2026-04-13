@@ -38,29 +38,39 @@ explain the ARMv7-M exception model from memory.
 
 ## Build and flash
 
-*(To be filled in as the project is built. Expected layout once
-working:)*
+Toolchain: `arm-none-eabi-gcc` 13.3, `openocd` 0.12, `qemu-system-arm`
+10.x. No CMake, no HAL, no CMSIS — every register touched in this
+project is defined by hand in `src/registers.h`.
 
 ```
 a1-gpio-exti/
 ├── README.md           # This file
 ├── Makefile            # arm-none-eabi-gcc, no CMake
 ├── openocd.cfg         # OpenOCD config for flashing + GDB server
-├── linker.ld           # Minimal linker script
-├── startup.S           # Vector table + reset handler
+├── linker.ld           # FLASH / RAM / CCM regions, vector table placement
+├── startup.S           # Vector table + reset handler (.data / .bss init)
 ├── src/
-│   ├── main.c          # GPIO/EXTI/LED logic
-│   ├── system.c        # RCC / SysTick init
-│   └── registers.h     # Minimal STM32F303 register definitions
-└── build/              # .elf, .bin, .map — gitignored
+│   ├── main.c          # GPIO / EXTI / LED logic
+│   ├── system.c        # SysTick 1 ms tick, millis()
+│   ├── system.h
+│   ├── registers.h     # Hand-rolled STM32F303 register block
+│   └── semihosting.h   # BKPT 0xAB shim, used only by the QEMU smoke build
+├── tests/
+│   ├── smoke.sh        # Host-side ELF checks (sections, symbols, size)
+│   └── qemu_smoke.sh   # QEMU boot-path check via semihosting
+└── build/              # .elf, .bin, .hex, .map — gitignored
 ```
 
-Expected invocation:
+Targets:
 
 ```bash
-make
-make flash               # wraps openocd program + reset
-make debug               # launches GDB attached to openocd GDB server
+make                 # build ELF + BIN + HEX, print size
+make smoke           # host-side ELF verification (no hardware, no QEMU)
+make qemu-smoke      # boot-path check under qemu-system-arm netduinoplus2
+make qemu            # same, interactive (raw qemu, no harness)
+make flash           # openocd program + verify + reset on ST-Link/V2-B
+make debug           # openocd GDB server + arm-none-eabi-gdb attach
+make clean
 ```
 
 ## Reference material
@@ -75,5 +85,33 @@ make debug               # launches GDB attached to openocd GDB server
 
 ## Status
 
-In progress. Scaffolding only at the moment — no source code
-committed yet. This README is the design document.
+Code complete, hardware bring-up pending.
+
+The full driver is committed: register-level GPIO init, SYSCFG
+routing, EXTI0 unmask, NVIC enable, and an ISR that clears `PR1`,
+debounces in software against a 1 ms SysTick, and toggles PE8.
+Linker script, startup file with vector table and `.data` / `.bss`
+initialisation, and a hand-rolled register block are all in place.
+Build is clean under `-Werror -Wall -Wextra -Wpedantic` at 420 B of
+text.
+
+Two hardware-free smoke tests gate regressions:
+
+- **`make smoke`** — static ELF checks: vector table at `0x08000000`,
+  `Reset_Handler` / `EXTI0_IRQHandler` / `SysTick_Handler` present,
+  `EXTI0_IRQHandler` not aliased to `Default_Handler` (catches the
+  bug where a missing ISR silently hangs on the first press), and
+  flash / SRAM usage within the 256 K / 40 K budget.
+- **`make qemu-smoke`** — runs a `-DQEMU_SMOKE` variant under
+  `qemu-system-arm netduinoplus2` that reports via ARM semihosting
+  and exits before peripheral init. Validates vector table load,
+  initial SP, `.data` copy, `.bss` zero, and the branch into `main`.
+  Deliberately skips GPIO / RCC / EXTI because the F405-based
+  machine has different peripheral addresses than the F303 —
+  peripheral behaviour is verified on real silicon.
+
+What is **not** yet verified: the actual GPIO / EXTI / NVIC path on
+the Discovery. That needs the board plugged in and `make flash`,
+followed by pressing B1 and watching LD4. The single-step-the-
+reset-handler exercise from the learning objectives list is the
+next hardware task.
